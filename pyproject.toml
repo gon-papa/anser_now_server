@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "anser_now"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.75.0"
+uvicorn = "^0.15.0"
+alembic = "^1.13.1"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

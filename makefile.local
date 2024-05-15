@@ -1,0 +1,17 @@
+.PHONY: help print build-local up down api
+.DEFAULT_GOAL := help
+
+print: ## 分岐テスト用
+	echo "ローカル"
+
+build: ## Build docker image to local development(M1 no-chache)
+	docker compose build --no-cache
+
+up: ## Start docker container
+	docker compose up -d
+
+down: ## Stop docker container
+	docker compose down
+
+api: ## Run python container
+	docker compose exec -it fastapi /bin/bash

@@ -1,0 +1,5 @@
+.PHONY: help print
+.DEFAULT_GOAL := help
+
+print: ## 分岐テスト用
+	echo "コンテナ"
