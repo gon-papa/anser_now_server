@@ -4,10 +4,22 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
+from sqlmodel import SQLModel
+
+from src.database.database import DatabaseConnection
+from src.core.dependency import di_injector
+
+from src.model.user import Users
+
+db_connection = di_injector.get_class(DatabaseConnection)
+ASYNC_DB_URL = db_connection.get_migration_url()
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# alembic.iniの設定を上書き
+config.set_main_option('sqlalchemy.url', ASYNC_DB_URL)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -18,7 +30,7 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = None
+target_metadata = SQLModel.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
