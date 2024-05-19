@@ -5,7 +5,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from init import app
+from src.init import app
 from src.schema.response.error_response import ErrorJsonResponse
 from src.core.logging import log_error, get_error_message
 
