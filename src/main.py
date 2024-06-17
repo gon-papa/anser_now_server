@@ -1,15 +1,15 @@
-from fastapi import HTTPException
+from src.endpoint import auth_endpoint
 from src.middleware.exception_handler import EnhancedTracebackMiddleware
-from init import app
+from src.init import app
+from src.endpoint import user_endpoint
+from src.endpoint import chat_endpoint
+from src.endpoint import guest_user_endpoint
 
 app = app
 app.add_middleware(EnhancedTracebackMiddleware)
 
-
-@app.get("/")
-async def root():
-    try:
-        # 何らかの処理
-        raise Exception("Internal Server Error")
-    except Exception as e:
-        raise HTTPException(status_code=500)
+#router
+app.include_router(user_endpoint.router)
+app.include_router(auth_endpoint.router)
+app.include_router(chat_endpoint.router)
+app.include_router(guest_user_endpoint.router)

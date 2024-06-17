@@ -16,7 +16,7 @@ app_env = os.getenv("APP_ENV", "development")
 # カスタムエラーハンドラの追加
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    log_error(f"An error occurred: {exc}")
+    log_error(exc)
     # 本番環境ではスタックトレースをレスポンスに含めない
     if app_env == "production":
         error_detail = "Internal Server Error"

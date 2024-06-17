@@ -68,11 +68,17 @@ LOGGING_CONFIG = {
 
 dictConfig(LOGGING_CONFIG)
 
+
 def log_error(e: Exception) -> None:
     error_logger = logging.getLogger("app.exception")
     detailed_tb = get_error_message(e)
     error_logger.error(f"An error occurred: {e}\n{detailed_tb}")
-    
+
+
 def get_error_message(e: Exception) -> str:
     tb = traceback.format_exception(type(e), e, e.__traceback__)
-    return "".join(tb[::-1]) # 逆順にしてスタックトレースを取得
+    return "".join(tb[::-1])  # 逆順にしてスタックトレースを取得
+
+def log(message: str) -> None:
+    logger = logging.getLogger("app.exception")
+    logger.error(message)

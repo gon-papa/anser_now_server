@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Interface with WebSocket</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #e5ddd5;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .chat-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background-color: #f7f7f7;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        /* チャットメッセージCSS */
+        .chat-message-wrapper {
+            display: flex;
+            margin-bottom: 15px;
+        }
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            border-bottom: 1px solid #ccc;
+        }
+        .chat-message {
+            margin-bottom: 15px;
+            padding: 20px 20px 10px 20px;
+            width: 50%;
+        }
+        .chat-message p:last-child {
+            text-align: right;
+            color: #ccc;
+        }
+        .chat-message p {
+            margin: 0;
+            border-radius: 15px;
+            word-wrap: break-word;
+            position: relative;
+            font-size: 14px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+        /* チャットメッセージ送信者CSS */
+        .questioner-message-wrapper {
+            display: flex;
+            flex-direction: row-reverse;
+        }
+        .questioner-message {
+            border-radius: 16px 0px 16px 16px;
+            background-color: #dcf8c6;
+        }
+        .questioner-message p {
+            color: #000;
+        }
+        /* チャットメッセージ返信者CSS */
+        .responder-message-wrapper {
+            display: flex;
+            flex-direction: row;
+        }
+        .responder-message {
+            border-radius: 0px 16px 16px 16px;
+            background-color: #fff;
+        }
+        .responder-message p {
+            text-align: center;
+            color: #000;
+        }
+        /* チャットエラー表示CSS */
+        .error-message {
+            background-color: #f8d7da;
+            padding: 10px;
+            border-radius: 16px;
+        }
+        .error-message p {
+            text-align: center;
+            color: #721c24;
+        }
+        .chat-input {
+            padding: 10px;
+            border-top: 1px solid #ccc;
+            background-color: #fff;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        .chat-input textarea {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            margin-right: 10px;
+            font-size: 16px;
+            width: 95%;
+        }
+        .action-wrapper {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 10px;
+        }
+        .action-wrapper button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            border: none;
+            color: #fff;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .chat-input button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="iframe-container">
+        <div class="chat-container">
+            <div class="chat-messages" id="chatMessages">
+                <!-- チャットメッセージ表示エリア -->
+            </div>
+            <input hidden id="chat_id" value="{{ chat_uuid }}" />
+            <input hidden id="corporation_id" value="{{ corporation_uuid }}" />
+            <input hidden id="ws_url" value="{{ ws_url }}" />
+            <div class="chat-input">
+                <textarea type="text" id="chatInput" placeholder="ご質問をこちらに入力してください"></textarea>
+                <div class="action-wrapper">
+                    <button onclick="sendMessage()">送信</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const QUESTIONER_CLASS_NAME = 'questioner-message';
+        const RESPONDER_CLASS_NAME = 'responder-message';
+        const ERROR_CLASS_NAME = 'error-message';
+        window.onload = function() {
+            const corporation_id = document.getElementById('corporation_id').value;
+            const chat_id = document.getElementById('chat_id').value;
+            const ws_url = document.getElementById('ws_url').value;
+
+            connect(ws_url);
+        }
+
+        function connect(url) {
+            try {
+                socket = new WebSocket(url);
+                socket.addEventListener('open', (event) => {
+                    console.log('Connected to WebSocket server');
+                });
+
+                socket.addEventListener('message', (event) => {
+                    try {
+                        const rawData = event.data;
+                        console.log("Raw event data:", rawData);
+                
+                        const message = JSON.parse(rawData);
+
+                        if (message.sender === 1) {
+                            messageReceived(message.body, RESPONDER_CLASS_NAME, message.send_at);
+                        } else if (message.sender === 2) {
+                            messageReceived(message.body, QUESTIONER_CLASS_NAME, message.send_at);
+                        } else {
+                            errorReceived('データ受信に問題が発生しました。再リロードしてください。もしくはしばらく経ってから再度お試しください。');
+                        }
+                    } catch (error) {
+                        console.log(error, 'd01');
+                        errorReceived('データ受信に問題が発生しました。再リロードしてください。もしくはしばらく経ってから再度お試しください。');
+                    }
+                });
+            } catch (error) {
+                console.log(error, 'd02');
+                socket.onclose = function(event) {
+                    if(!event.wasClean) {
+                        errorReceived('問題が発生しました。再リロードしてください。もしくはしばらく経ってから再度お試しください。');
+                    }
+                }
+            } finally {
+                console.log('finally')
+                socket.onclose = function(event) {
+                    if(!event.wasClean) {
+                        errorReceived('問題が発生しました。再リロードしてください。もしくはしばらく経ってから再度お試しください。');
+                    }
+                }
+            }
+        }
+
+        // メッセージの表示
+        function messageReceived(message, className, sendTime) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageWrapper = document.createElement('div');
+            const messageElement = document.createElement('div');
+            const messageContent = document.createElement('p');
+            const messageTime = document.createElement('p');
+
+            messageWrapper.className = 'chat-message-wrapper ' + className + '-wrapper';
+            messageElement.className = 'chat-message ' + className;
+            messageContent.textContent = message;
+            messageTime.textContent = formatDatetimeToJST(sendTime);
+
+            messageElement.appendChild(messageContent);
+            messageElement.appendChild(messageTime);
+            messageWrapper.appendChild(messageElement);
+            chatMessages.appendChild(messageWrapper);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function errorReceived(errorMessage, className=ERROR_CLASS_NAME) {
+            const chatMessages = document.getElementById('chatMessages');
+            const errorElement = document.createElement('div');
+            const errorContent = document.createElement('p');
+
+            errorElement.className = className;
+            errorContent.innerHTML = errorMessage;
+
+            errorElement.appendChild(errorContent);
+            chatMessages.appendChild(errorElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+
+
+        // メッセージの送信
+        function sendMessage(corporation_id, chat_id) {
+            const chatInput = document.getElementById('chatInput');
+            const corp_id = document.getElementById('corporation_id').value;
+            const c_id = document.getElementById('chat_id').value;
+            const messageText = chatInput.value.trim();
+
+            if (messageText !== '') {
+                postMessage(messageText, corp_id, c_id);
+                chatInput.value = '';
+            }
+        }
+
+        function postMessage(body, corporation_id, chat_id) {
+            let sendObject = {
+                body: body,
+                corporation_uuid: corporation_id,
+                chat_uuid: chat_id,
+            }
+
+            fetch('http://localhost:8000/chat/guest-message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(sendObject),
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Success:', data);
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                errorReceived('送信に失敗しました。再リロードしてください。もしくはしばらく経ってから再度お試しください。');
+            });
+        }
+
+        function formatDatetimeToJST(isoString) {
+            const utcDate = new Date(isoString);
+            const jstOffset = 9 * 60; // JSTはUTC+9
+            const jstDate = new Date(utcDate.getTime() + jstOffset * 60 * 1000);
+            const options = {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            };
+            return new Intl.DateTimeFormat('ja-JP', options).format(jstDate).replace(/\//g, '-').replace(',', '');
+        }
+    </script>
+</body>
+</html>
