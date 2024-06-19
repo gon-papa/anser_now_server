@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, WebSocket
+from ast import parse
+import json
+from fastapi import APIRouter, Depends, HTTPException, WebSocket
+from src.schema.response.base_response import JsonResponse
 from src.schema.request.chat_request import ChatSaveMessageRequest
 from src.service.corporation_service import CorporationService
-from src.core.logging import log
+from src.core.logging import log, log_error
 from src.schema.response.chat_response import ChatIndexResponse, ChatShowResponse
 from src.service.chat_service import ChatService
-from src.core.auth import get_current_active_user
+from src.core.auth import get_current_active_user, get_current_user_ws
 from src.model.user import Users
 from src.core.ws_connect import room_connection_manager, connection_manager
 from src.core.dependency import di_injector
@@ -41,8 +44,8 @@ async def index(
                 user_name=chat.user.account_name if chat.user_id else None,
                 corporation_uuid=chat.corporation.uuid,
                 corporation_name=chat.corporation.name,
-                latest_message=chat.messages[0].body,
-                latest_send_at=chat.messages[0].send_at
+                latest_message=chat.messages[-1].body,
+                latest_send_at=chat.messages[-1].send_at
             )
             chats_data.append(item)
         # カーソルは取得した最後のメッセージのsend_atのtimestampを返す(取得した中で一番古いもの)
@@ -85,12 +88,36 @@ async def show(
         raise
     
 @router.post(
+    "/chat/message",
+    tags=["chat"],
+    response_model=JsonResponse,
+    name="ユーザー用チャットメッセージ保存",
+    description="ユーザー用チャットメッセージを保存します。",
+    operation_id="save_chat_message",
+)
+async def save_message(
+    request: ChatSaveMessageRequest,
+    current_user: Users =Depends(get_current_active_user)
+) -> JsonResponse:
+    try:
+        chat_message = await di_injector.get_class(ChatService).user_save_chat_message(
+            chat_uuid=request.chat_uuid,
+            corporation_uuid=request.corporation_uuid,
+            user_id=current_user.id,
+            body=request.body
+        )
+        
+        return JsonResponse()
+    except Exception:
+        raise
+    
+@router.post(
     "/chat/guest-message",
     tags=["chat"],
     response_model=None,
     name="ゲスト用チャットメッセージ保存",
     description="チャットメッセージを保存します。",
-    operation_id="save_chat_message",
+    operation_id="save_guest_chat_message",
 )
 async def save_guest_message(request: ChatSaveMessageRequest):
     try:
@@ -99,20 +126,35 @@ async def save_guest_message(request: ChatSaveMessageRequest):
             corporation_uuid=request.corporation_uuid,
             body=request.body
         )
-        
-        await room_connection_manager.broadcast(
-            ChatShowResponse.ChatShowResponseItem(
-                uuid=chat_message.uuid,
-                body=chat_message.body,
-                send_at=chat_message.send_at,
-                sender=chat_message.sender,
-                user=None
-            ),
-            request.chat_uuid,
-        )
-        return 'OK'
+
+        return JsonResponse()
     except Exception:
         raise
+    
+@router.websocket(
+    "/ws/chat",
+    name="チャット通信",
+)
+async def ws_chats(
+    websocket: WebSocket,
+) -> dict:
+    await connection_manager.connect(websocket)
+    try:
+        data = await websocket.receive_text()
+        parsed_data = json.loads(data)
+        if parsed_data['token']:
+            await get_current_user_ws(parsed_data['token'])
+        while True:
+            data = await websocket.receive_text()
+            await connection_manager.broadcast(data)
+    except HTTPException as e:
+        log_error(e)
+        raise
+    except Exception as e:
+        log_error(e)
+        raise
+    finally:
+        connection_manager.disconnect(websocket)
     
 
 

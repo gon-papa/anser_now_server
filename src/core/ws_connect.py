@@ -1,7 +1,8 @@
 from typing import List, Dict
+from venv import create
 from fastapi import WebSocket
 
-from src.schema.response.chat_response import ChatShowResponse
+from src.schema.response.chat_response import ChatIndexResponse, ChatShowResponse
 from src.core.logging import log
 
 class ConnectionManager:
@@ -33,14 +34,16 @@ class ConnectionManager:
         """
         self.active_connections.remove(websocket)
 
-    async def broadcast(self, message: dict):
+    async def broadcast(self, message: ChatIndexResponse.ChatIndexResponseItem):
         """接続先に配信する
 
         Args:
             message (dict): 送信内容
         """
         for connection in self.active_connections:
-            await connection.send_json(message)
+            message_dict = message.model_dump()
+            message_dict['latest_send_at'] = message_dict['latest_send_at'].isoformat()
+            await connection.send_json(message_dict)
             
 connection_manager = ConnectionManager()
 
@@ -89,6 +92,9 @@ class RoomConnectionManager:
         for connection in self.active_connections[chat_uuid]:
             message_dict = message.model_dump()
             message_dict['send_at'] = message_dict['send_at'].isoformat()
+            if message_dict['user']:
+                message_dict['user']['created_at'] = message_dict['user']['created_at'].isoformat()
+                message_dict['user']['updated_at'] = message_dict['user']['updated_at'].isoformat()
             await connection.send_json(message_dict)
             
 room_connection_manager = RoomConnectionManager()

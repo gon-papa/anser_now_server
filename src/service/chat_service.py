@@ -1,10 +1,13 @@
 
 from injector import inject
 
+from src.model.chat import Chats
+from src.schema.response.chat_response import ChatIndexResponse, ChatShowResponse
 from src.repository.corporation_repository import CorporationRepository
 from src.const.chat_const import ChatConsts
 from src.model.chat_message import ChatMessages
 from src.repository.chat_repository import ChatRepository
+from src.core.ws_connect import room_connection_manager, connection_manager
 
 
 class ChatService:
@@ -58,6 +61,45 @@ class ChatService:
             limit=limit,
         )
         
+    async def user_save_chat_message(
+        self,
+        chat_uuid: str,
+        corporation_uuid: str,
+        user_id: int,
+        body: str
+        ) -> ChatMessages:
+        """User save chat message
+        
+        Args:
+            chat_uuid (str): チャットUUID
+            corporation_uuid (str): 企業UUID
+            user_id (int): ユーザID
+            body (str): メッセージ内容
+
+        Returns:
+            ChatMessages: チャットメッセージ
+        """
+        chat = await self.repository.get_chat_by_uuid(chat_uuid)
+        if not chat:
+            corporation = await self.corporation_repository.get_corporation_by_uuid(corporation_uuid)
+            if corporation is None:
+                raise Exception("企業が存在しません。")
+            chat = await self.repository.create_chat(
+                uuid=chat_uuid,
+                corporation_uuid=corporation.id,
+                user_id=user_id,
+            )
+        message = await self.save_chat_message(
+            chat_id=chat.id,
+            sender=ChatConsts.SENDER_USER,
+            user_id=user_id,
+            body=body,
+        )
+        chat = await self.repository.get_chat_by_uuid(chat_uuid)
+        await self.chats_broadcast(chat)
+        await self.room_message_broadcast(message, chat_uuid)
+        return message
+        
     async def guest_save_chat_message(
         self,
         chat_uuid: str,
@@ -80,24 +122,26 @@ class ChatService:
             corporation = await self.corporation_repository.get_corporation_by_uuid(corporation_uuid)
             if corporation is None:
                 raise Exception("企業が存在しません。")
-            await self.repository.create_chat(
+            chat = await self.repository.create_chat(
                 uuid=chat_uuid,
                 corporation_uuid=corporation.id,
                 user_id=None,
             )
         
-        return await self.save_chat_message(
-            chat_uuid=chat_uuid,
-            corporation_uuid=corporation_uuid,
+        message = await self.save_chat_message(
+            chat_id=chat.id,
             sender=ChatConsts.SENDER_GUEST,
             user_id=None,
             body=body,
         )
+        chat = await self.repository.get_chat_by_uuid(chat_uuid)
+        await self.chats_broadcast(chat)
+        await self.room_message_broadcast(message, chat_uuid)
+        return message
     
     async def save_chat_message(
         self,
-        chat_uuid: str,
-        corporation_uuid: str,
+        chat_id: int,
         sender: int,
         user_id: int | None,
         body: str
@@ -112,11 +156,46 @@ class ChatService:
 
         Returns:
             ChatMessages: チャットメッセージ
-        """
+        """    
         return await self.repository.save_chat_message(
-            chat_uuid=chat_uuid,
-            corporation_uuid=corporation_uuid,
+            chat_id=chat_id,
             sender=sender,
             user_id=user_id,
             body=body,
+        )
+        
+    async def chats_broadcast(self, chats: Chats):
+        """Chats broadcast
+        
+        Args:
+            chats (Chats): チャット
+        """
+        await connection_manager.broadcast(
+            ChatIndexResponse.ChatIndexResponseItem(
+                uuid=chats.uuid,
+                user_id=chats.user.id if chats.user else None,
+                user_name=chats.user.account_name if chats.user else None,
+                corporation_uuid=chats.corporation.uuid,
+                corporation_name=chats.corporation.name,
+                latest_message=chats.messages[-1].body,
+                latest_send_at=chats.messages[-1].send_at
+            )
+        )
+        
+    async def room_message_broadcast(self, message: ChatMessages, chat_uuid: str):
+        """Message broadcast
+        
+        Args:
+            message (ChatMessages): メッセージ
+            chat_uuid (str): チャットUUID
+        """
+        await room_connection_manager.broadcast(
+            ChatShowResponse.ChatShowResponseItem(
+                uuid=message.uuid,
+                body=message.body,
+                send_at=message.send_at,
+                sender=message.sender,
+                user=message.user
+            ),
+            chat_uuid,
         )

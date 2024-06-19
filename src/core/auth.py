@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from authlib.jose import JoseError, jwt
+from authlib.jose.errors import DecodeError
 from passlib.context import CryptContext
 
 from src.core.logging import log_error
@@ -94,6 +95,20 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Optional[User
     if user is None:
         credentials_exception(None)
     return user
+
+# websocket用アクセストークン解析
+async def get_current_user_ws(token: str) -> bool:
+    try:
+        payload = jwt.decode(token, secret_key)
+        uuid: Optional[str] = payload.get("sub")
+        if uuid is None:
+            credentials_exception(None)
+    except Exception as e:
+        credentials_exception(e)
+    user = await di_injector.get_class(UserRepository).get_user_by_uuid(uuid)
+    if user is None:
+        credentials_exception(None)
+    return True
 
 
 # 解析失敗時の例外
