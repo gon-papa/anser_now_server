@@ -13,6 +13,7 @@ from src.model.user import Users
 from src.model.corporation import Corporations
 from src.model.chat import Chats
 from src.model.chat_message import ChatMessages
+from src.model.chat_reads import ChatsRead
 
 db_connection = di_injector.get_class(DatabaseConnection)
 ASYNC_DB_URL = db_connection.get_migration_url()

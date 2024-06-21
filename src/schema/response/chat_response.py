@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List
 from sqlmodel import Field, SQLModel
 
+from src.model.chat import Chats
 from src.schema.response.user_response import UserResponse
 from src.schema.response.base_response import JsonResponse
 
@@ -15,6 +16,7 @@ class ChatIndexResponse(JsonResponse):
         corporation_name: str
         latest_message: str
         latest_send_at: datetime
+        is_read: bool | None = Field(None, description="既読フラグ")
         class Config:
             from_attributes = True
             json_schema_extra = {
@@ -24,6 +26,7 @@ class ChatIndexResponse(JsonResponse):
                     "corporation_uuid": "uuid",
                     "latest_message": "Hello, World!",
                     "latest_send_at": "2022-01-01 00:00:00",
+                    "is_read": True
                 }
             }
     data: List[ChatIndexResponseItem] = Field(None, description="チャット一覧情報")

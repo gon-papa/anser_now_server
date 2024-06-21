@@ -4,6 +4,9 @@ from uuid import uuid4
 from injector import inject
 from sqlalchemy import desc, func
 from sqlalchemy.future import select
+from sqlalchemy import not_, exists
+from src.model.chat_reads import ChatsRead
+from src.const.chat_const import ChatConsts
 from src.model.corporation import Corporations
 from src.core.logging import log
 from src.model.chat_message import ChatMessages
@@ -20,9 +23,9 @@ class ChatRepository:
         self.db = db
         
     # chatをuuidで取得
-    async def get_chat_by_uuid(self, uuid: str) -> Chats:
+    async def get_chat_by_uuid(self, uuid: str, user_id: int | None = None) -> Chats:
         async with self.db.get_db() as session:
-            query = await self.get_chat_query()
+            query = await self.get_chat_query(user_id)
             q = query['query'].where(Chats.uuid == uuid)
 
             result = await session.exec(q)
@@ -33,17 +36,18 @@ class ChatRepository:
         self,
         cursor: int | None,
         limit: int,
-        keyword: str | None
+        keyword: str | None,
+        user_id: int | None = None,
     ) -> List[Chats]:
         async with self.db.get_db() as session:
             # 並び替えのためにサブクエリを作成
-            query = await self.get_chat_query()
+            query = await self.get_chat_query(user_id)
             if cursor is None or cursor == 0:
                 q = query['query'].limit(limit)
             else:
                 # cursorをdatetime型に変換
                 cursor = datetime.fromtimestamp(cursor)
-                q = query['query'].where(query['subquery'].c.latest_send_at < cursor).limit(limit)
+                q = query['query'].where(query['sub_query'].c.latest_send_at < cursor).limit(limit)
                 
             if keyword:
                 q = q.where(Chats.corporation.has(Corporations.name.like(f"%{keyword}%")))
@@ -53,7 +57,7 @@ class ChatRepository:
             return {"chats": chats, "next_cursor": next_cursor}
         
     # chat取得クエリ
-    async def get_chat_query(self):
+    async def get_chat_query(self, user_id: int | None = None):
         ChatMessagesAlias = aliased(ChatMessages)
         sub_query = (
             select(ChatMessagesAlias.chat_id, func.max(ChatMessagesAlias.send_at).label('latest_send_at'))
@@ -67,10 +71,12 @@ class ChatRepository:
             .options(
                 joinedload(Chats.user),
                 joinedload(Chats.corporation),
-                joinedload(Chats.messages)
+                joinedload(Chats.messages).joinedload(ChatMessages.chat_read, innerjoin=False),
             )
             .order_by(desc(sub_query.c.latest_send_at))
         )
+        
+        query = query.order_by(desc(sub_query.c.latest_send_at))
         return {'query': query, 'sub_query': sub_query}
         
         
@@ -164,3 +170,31 @@ class ChatRepository:
             )
             chat_message = chat_message.scalar_one()
             return chat_message
+        
+    async def read_chat_message(self, chat_id: int, user_id: int) -> bool:
+        async with self.db.get_db() as session:
+            subquery = (
+                select(ChatsRead)
+                .where(ChatsRead.message_id == ChatMessages.id)
+                .where(ChatsRead.user_id == user_id)
+                .correlate(ChatMessages)
+            )
+
+            query = (
+                select(ChatMessages.id)
+                .outerjoin(ChatMessages.chat_read)
+                .where(ChatMessages.chat_id == chat_id)
+                .where(ChatMessages.sender == ChatConsts.SENDER_GUEST)
+                .where(not_(exists(subquery)))
+            )
+            
+            ids = await session.exec(query)
+            ids = ids.scalars().all()
+            for id in ids:
+                chat_read = ChatsRead(
+                    message_id=id,
+                    user_id=user_id,
+                )
+                session.add(chat_read)
+            await session.commit()
+            return True

@@ -1,8 +1,12 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional, List
 from uuid import uuid4
 from sqlalchemy import TIMESTAMP
 from sqlmodel import Field, SQLModel, Boolean, Column, Integer, String, Relationship
+# if TYPE_CHECKING:
+from src.model.chat import Chats
+from src.model.chat_message import ChatMessages
+from src.model.chat_reads import ChatsRead
 
 
 class Users(SQLModel, table=True):
@@ -37,5 +41,6 @@ class Users(SQLModel, table=True):
             onupdate=datetime.now(timezone.utc)
         )
     )
-    chats: "Chats" = Relationship(back_populates="user") # type: ignore
-    chat_messages: "ChatMessages" = Relationship(back_populates="user") # type: ignore
+    chats: List[Chats] = Relationship(back_populates="user") # type: ignore
+    chat_messages: List[ChatMessages] = Relationship(back_populates="user") # type: ignore
+    chat_read: List[ChatsRead] = Relationship(back_populates="user") # type: ignore

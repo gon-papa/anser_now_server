@@ -1,4 +1,6 @@
 
+from operator import is_
+from typing import List
 from injector import inject
 
 from src.model.chat import Chats
@@ -8,6 +10,7 @@ from src.const.chat_const import ChatConsts
 from src.model.chat_message import ChatMessages
 from src.repository.chat_repository import ChatRepository
 from src.core.ws_connect import room_connection_manager, connection_manager
+from src.core.logging import log
 
 
 class ChatService:
@@ -27,7 +30,8 @@ class ChatService:
         self,
         cursor: int | None,
         limit: int,
-        keyword: str | None
+        keyword: str | None,
+        user_id: int | None = None,
     ) -> dict:
         """Get chats
         
@@ -42,6 +46,7 @@ class ChatService:
             cursor=cursor,
             limit=limit,
             keyword=keyword,
+            user_id=user_id,
         )
         
     async def get_chat_messages(self, chat_uuid: str, cursor: int | None, limit: int) -> dict:
@@ -66,7 +71,7 @@ class ChatService:
         chat_uuid: str,
         corporation_uuid: str,
         user_id: int,
-        body: str
+        body: str,
         ) -> ChatMessages:
         """User save chat message
         
@@ -95,7 +100,7 @@ class ChatService:
             user_id=user_id,
             body=body,
         )
-        chat = await self.repository.get_chat_by_uuid(chat_uuid)
+        chat = await self.repository.get_chat_by_uuid(chat_uuid, user_id)
         await self.chats_broadcast(chat)
         await self.room_message_broadcast(message, chat_uuid)
         return message
@@ -164,22 +169,15 @@ class ChatService:
             body=body,
         )
         
-    async def chats_broadcast(self, chats: Chats):
+    async def chats_broadcast(self, chats: Chats, user_id: int | None = None):
         """Chats broadcast
         
         Args:
             chats (Chats): チャット
         """
+        chat = await self.chat_response_item_mapping([chats], user_id)
         await connection_manager.broadcast(
-            ChatIndexResponse.ChatIndexResponseItem(
-                uuid=chats.uuid,
-                user_id=chats.user.id if chats.user else None,
-                user_name=chats.user.account_name if chats.user else None,
-                corporation_uuid=chats.corporation.uuid,
-                corporation_name=chats.corporation.name,
-                latest_message=chats.messages[-1].body,
-                latest_send_at=chats.messages[-1].send_at
-            )
+            chat[0]
         )
         
     async def room_message_broadcast(self, message: ChatMessages, chat_uuid: str):
@@ -199,3 +197,58 @@ class ChatService:
             ),
             chat_uuid,
         )
+    
+    async def chat_response_item_mapping(self, chats: List[Chats], user_id: int | None):
+        """Chat response item mapping
+
+        Args:
+            chats (List[Chats]): _description_
+            user_id (int | None): _description_
+
+        Returns:
+            List[ChatIndexResponse.ChatIndexResponseItem]
+        """
+        chats_data = []
+        is_read = True
+        for chat in chats:
+            messages = [message for message in chat.messages if message.sender == ChatConsts.SENDER_GUEST]
+            for message in messages:
+                if not message.chat_read:
+                    is_read = False
+                    break
+                if not any(read.user_id == user_id for read in message.chat_read):
+                    is_read = False
+                    break
+                if user_id is None:
+                    is_read = False
+                    break
+                is_read = True
+                break
+            item = ChatIndexResponse.ChatIndexResponseItem(
+                uuid=chat.uuid,
+                user_id=chat.user_id,
+                user_name=chat.user.account_name if chat.user_id else None,
+                corporation_uuid=chat.corporation.uuid,
+                corporation_name=chat.corporation.name,
+                latest_message=chat.messages[-1].body,
+                latest_send_at=chat.messages[-1].send_at,
+                is_read=is_read
+            )
+            chats_data.append(item)
+        return chats_data
+    
+    async def read_chat_message(self, chat_uuid: str, user_id: int):
+        """Read chat message
+        
+        Args:
+            chat_uuid (str): チャットUUID
+            user_id (int): ユーザID
+        """
+        chat = await self.repository.get_chat_by_uuid(chat_uuid)
+        if not chat:
+            raise Exception("チャットが存在しません。")
+        await self.repository.read_chat_message(chat.id, user_id)
+        chat = await self.repository.get_chat_by_uuid(chat_uuid)
+        await self.chats_broadcast(chat, user_id)
+        return chat
+        

@@ -18,3 +18,10 @@ class ChatSaveMessageRequest(BaseModel):
         title="メッセージ内容",
         description="メッセージ内容",
     )
+    
+class ChatReadRequest(BaseModel):
+    chat_uuid: str = Field(
+        ...,
+        title="チャットUUID",
+        description="チャットUUID",
+    )

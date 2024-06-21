@@ -1,8 +1,12 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional, List
 from uuid import uuid4
 from sqlalchemy import TIMESTAMP
 from sqlmodel import Field, SQLModel, Column, Integer, String, Text, ForeignKey, Relationship
+if TYPE_CHECKING:
+    from src.model.user import Users
+    from src.model.chat import Chats
+    from src.model.chat_reads import ChatsRead
 
 class ChatMessages(SQLModel, table=True):
     __tablename__ = "chat_messages"
@@ -12,7 +16,7 @@ class ChatMessages(SQLModel, table=True):
     )
     chat_id: int = Field(sa_column=Column(Integer, ForeignKey("chats.id"), nullable=False, comment="チャットID"))
     user_id: int = Field(sa_column=Column(Integer, ForeignKey("users.id"), nullable=True, comment="ユーザID"))
-    sender: int = Field(sa_column=Column(Integer, nullable=False, comment="送信者 1:チャット質問者 2:企業回答者(ユーザー)"))
+    sender: int = Field(sa_column=Column(Integer, nullable=False, comment="送信者 1:企業回答者(ユーザー) 2:チャット質問者(ゲスト)"))
     body: str = Field(sa_column=Column(Text, nullable=False, comment="メッセージ内容"))
     send_at: datetime = Field(sa_column=Column(TIMESTAMP(True), nullable=False, comment="送信日時"))
     created_at: datetime = Field(
@@ -33,3 +37,4 @@ class ChatMessages(SQLModel, table=True):
     )
     chat: "Chats" = Relationship(back_populates="messages") # type: ignore
     user: "Users" = Relationship(back_populates="chat_messages") # type: ignore
+    chat_read: List["ChatsRead"] = Relationship(back_populates="message") # type: ignore

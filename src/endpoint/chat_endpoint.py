@@ -1,8 +1,9 @@
 from ast import parse
 import json
+import re
 from fastapi import APIRouter, Depends, HTTPException, WebSocket
 from src.schema.response.base_response import JsonResponse
-from src.schema.request.chat_request import ChatSaveMessageRequest
+from src.schema.request.chat_request import ChatReadRequest, ChatSaveMessageRequest
 from src.service.corporation_service import CorporationService
 from src.core.logging import log, log_error
 from src.schema.response.chat_response import ChatIndexResponse, ChatShowResponse
@@ -34,20 +35,13 @@ async def index(
         chats = await di_injector.get_class(ChatService).get_chats(
             cursor=cursor,
             limit=limit,
-            keyword=keyword
+            keyword=keyword,
+            user_id=current_user.id
         )
-        chats_data = []
-        for chat in chats['chats']:
-            item = ChatIndexResponse.ChatIndexResponseItem(
-                uuid=chat.uuid,
-                user_id=chat.user_id,
-                user_name=chat.user.account_name if chat.user_id else None,
-                corporation_uuid=chat.corporation.uuid,
-                corporation_name=chat.corporation.name,
-                latest_message=chat.messages[-1].body,
-                latest_send_at=chat.messages[-1].send_at
-            )
-            chats_data.append(item)
+        chats_data =  await di_injector.get_class(ChatService).chat_response_item_mapping(
+            chats=chats['chats'],
+            user_id=current_user.id,
+        )
         # カーソルは取得した最後のメッセージのsend_atのtimestampを返す(取得した中で一番古いもの)
         return ChatIndexResponse(data=chats_data, cursor=chats['next_cursor'])
     except Exception:
@@ -121,7 +115,7 @@ async def save_message(
 )
 async def save_guest_message(request: ChatSaveMessageRequest):
     try:
-        chat_message = await di_injector.get_class(ChatService).guest_save_chat_message(
+        await di_injector.get_class(ChatService).guest_save_chat_message(
             chat_uuid=request.chat_uuid,
             corporation_uuid=request.corporation_uuid,
             body=request.body
@@ -181,4 +175,26 @@ async def ws_message(
             await room_connection_manager.broadcast(data, chat_uuid)
     except Exception:
         room_connection_manager.disconnect(websocket, chat_uuid)
+        raise
+    
+@router.post(
+    "/chat/read",
+    tags=["chat"],
+    response_model=JsonResponse,
+    name="チャット既読処理",
+    description="チャットメッセージを既読にします。",
+    operation_id="read_chat_message",
+)
+async def read_message(
+    request: ChatReadRequest,
+    current_user: Users =Depends(get_current_active_user)
+) -> JsonResponse:
+    try:
+        chat = await di_injector.get_class(ChatService).read_chat_message(
+            chat_uuid=request.chat_uuid,
+            user_id=current_user.id
+        )
+
+        return JsonResponse()
+    except Exception:
         raise
