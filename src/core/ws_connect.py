@@ -97,4 +97,15 @@ class RoomConnectionManager:
                 message_dict['user']['updated_at'] = message_dict['user']['updated_at'].isoformat()
             await connection.send_json(message_dict)
             
+    async def input_broadcast(self, message: dict, chat_uuid: str):
+        """接続先に入力を配信する
+
+        Args:
+            message (dict): 送信内容
+            str (str): 部屋ID
+        """
+        for connection in self.active_connections[chat_uuid]:
+            await connection.send_json(message)
+            
+            
 room_connection_manager = RoomConnectionManager()

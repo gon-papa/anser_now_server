@@ -1,6 +1,4 @@
-from ast import parse
 import json
-import re
 from fastapi import APIRouter, Depends, HTTPException, WebSocket
 from src.schema.response.base_response import JsonResponse
 from src.schema.request.chat_request import ChatReadRequest, ChatSaveMessageRequest
@@ -170,6 +168,7 @@ async def ws_message(
         # ここから通信処理
         await room_connection_manager.connect(websocket, chat_uuid)
         
+        log(room_connection_manager.active_connections)
         while True: 
             data = await websocket.receive_text()
             await room_connection_manager.broadcast(data, chat_uuid)
